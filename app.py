@@ -64,7 +64,7 @@ def _extract_from_selected_line(header: str, line: str):
 def main():
 	st.set_page_config(page_title=APP_TITLE, page_icon="🧭", layout="wide")
 	st.title(APP_TITLE)
-	st.caption("Select equipment from the table below and click Check to parse brand/model/options")
+	st.caption("Select equipment from the table below and click Analyze to see all the details")
 	
 	# Get hardcoded dataset
 	header, all_data_lines = _get_hardcoded_data()
@@ -81,15 +81,16 @@ def main():
 		st.markdown("**Select an equipment entry:**")
 		
 		# Create selection interface
+		options_with_placeholder = [-1] + list(range(len(all_data_lines)))
 		selected_index = st.selectbox(
 			"Choose equipment:",
-			options=range(len(all_data_lines)),
-			format_func=lambda i: f"📋 {all_data_lines[i].split('\t')[7]} {all_data_lines[i].split('\t')[8]} - {all_data_lines[i].split('\t')[2]}",
-			index=None  # No default selection
+			options=options_with_placeholder,
+			format_func=lambda i: ("— Select equipment —" if i == -1 else f"📋 {all_data_lines[i].split('\t')[7]} {all_data_lines[i].split('\t')[8]} - {all_data_lines[i].split('\t')[2]}"),
+			index=0
 		)
 		
 		
-		if selected_index is not None:
+		if selected_index != -1:
 			selected_line = all_data_lines[selected_index]
 			parts = selected_line.split("\t")
 			
@@ -112,64 +113,194 @@ def main():
 			st.markdown("---")
 			check_clicked = st.button("🔍 Analyze", type="primary", use_container_width=True)
 			
-			if check_clicked:
-				# Instant feedback
-				status_placeholder = st.empty()
-				status_placeholder.info("🔄 Starting analysis... Please wait.")
-				
-				# Extract brand/model/options from selected line
-				brand, model, options_str = _extract_from_selected_line(header, selected_line)
-				
-				# Update status
-				status_placeholder.info("🔍 Parsing equipment data...")
-				
-				# Use the extracted brand and model directly (no need to re-parse)
-				brand_parsed = brand.strip()
-				model_parsed = model.strip()
-				
-				# Parse options only if they exist
-				if options_str:
-					# Build input string for options parsing only
-					user_input = f"dummy dummy /{options_str}" if not options_str.startswith("/") else f"dummy dummy {options_str}"
-					parsed = parse_query(user_input)
-					raw_options = parsed.get("raw_options", "").strip()
-				else:
-					raw_options = ""
-				
-				# Update status
-				status_placeholder.info("🤖 Processing with AI...")
-				
-				
-				try:
-					client = get_openai_client()
-					# Build input for LLM processing with correct brand/model
-					llm_input = f"{brand_parsed} {model_parsed} {raw_options}" if raw_options else f"{brand_parsed} {model_parsed}"
-					payload = normalize_options_via_llm(
-						client,
-						llm_input,
-						MODEL_NAME,
-						float(TEMPERATURE),
-					)
-					# Ensure the normalized output uses the correct brand and model
-					payload["normalized"]["brand"] = brand_parsed
-					payload["normalized"]["model"] = model_parsed
-				except Exception as e:
-					payload = {
-						"normalized": {
-							"brand": brand_parsed,
-							"model": model_parsed,
-							"options": []
-						},
-						"results": []
+			# Check if we have cached analysis for this equipment
+			brand_for_session = parts[8].strip()
+			model_for_session = parts[7].strip()
+			analysis_key_current = f"{brand_for_session}|{model_for_session}"
+			cached_analysis = st.session_state.get("analysis_key") == analysis_key_current
+			
+			if check_clicked or cached_analysis:
+				# Show comprehensive loading state with non-technical explanations
+				if check_clicked:
+					st.markdown("---")
+					st.subheader("🔍 Analyzing Your Equipment")
+					
+					# Simple 3-line progress with animated icons
+					st.markdown("""
+					<style>
+					@keyframes spin {
+						0% { transform: rotate(0deg); }
+						100% { transform: rotate(360deg); }
 					}
-					st.error(f"LLM error: {e}\nEnsure OPENAI_API_KEY is set and valid.")
-				
-				# Update status
-				status_placeholder.info("🌐 Searching web for product information...")
-				
-				# Web scraping (always enabled)
-				scraping_results = None
-				with st.spinner("🔍 Searching for product information across multiple sources..."):
+					.spinning {
+						animation: spin 1s linear infinite;
+						display: inline-block;
+					}
+					</style>
+					""", unsafe_allow_html=True)
+					
+					col1, col2 = st.columns([0.1, 0.9])
+					with col1:
+						st.markdown(
+							"""
+							<style>
+							.spinner {
+							  border: 4px solid #f3f3f3; /* Light gray */
+							  border-top: 4px solid #3498db; /* Blue */
+							  border-radius: 50%;
+							  width: 22px;
+							  height: 22px;
+							  animation: spin 1s linear infinite;
+							  margin: auto;
+							}
+							@keyframes spin {
+							  0% { transform: rotate(0deg); }
+							  100% { transform: rotate(360deg); }
+							}
+							</style>
+							<div class="spinner"></div>
+							""",
+							unsafe_allow_html=True
+						)
+					with col2:
+						st.write("**Parsing equipment data...**")
+					
+					# Extract brand/model/options from selected line
+					brand, model, options_str = _extract_from_selected_line(header, selected_line)
+					brand_parsed = brand.strip()
+					model_parsed = model.strip()
+					
+					# Parse options - only get actual options, not brand/model
+					if options_str:
+						# Use the raw options string directly, split by '/'
+						raw_options_list = [opt.strip() for opt in options_str.split('/') if opt.strip()]
+						# Filter out any that might be brand/model names
+						filtered_options = []
+						for opt in raw_options_list:
+							# Skip if it looks like a brand or model name
+							if opt.lower() not in [brand_parsed.lower(), model_parsed.lower()] and len(opt) > 0:
+								filtered_options.append(opt)
+						raw_options = '/'.join(filtered_options)
+					else:
+						raw_options = ""
+					
+					# AI processing
+					try:
+						client = get_openai_client()
+						llm_input = f"{brand_parsed} {model_parsed} {raw_options}" if raw_options else f"{brand_parsed} {model_parsed}"
+						if client is not None:
+							payload = normalize_options_via_llm(
+								client,
+								llm_input,
+								MODEL_NAME,
+								float(TEMPERATURE),
+							)
+						else:
+							payload = {
+								"normalized": {
+									"brand": brand_parsed,
+									"model": model_parsed,
+									"options": split_options_deterministic(raw_options)
+								},
+								"results": []
+							}
+						payload["normalized"]["brand"] = brand_parsed
+						payload["normalized"]["model"] = model_parsed
+					except Exception as e:
+						payload = {
+							"normalized": {
+								"brand": brand_parsed,
+								"model": model_parsed,
+								"options": []
+							},
+							"results": []
+						}
+					
+					# Step 2: Explaining options
+					col1, col2 = st.columns([0.1, 0.9])
+					with col1:
+						st.markdown(
+							"""
+							<style>
+							.spinner {
+							  border: 4px solid #f3f3f3; /* Light gray */
+							  border-top: 4px solid #3498db; /* Blue */
+							  border-radius: 50%;
+							  width: 22px;
+							  height: 22px;
+							  animation: spin 1s linear infinite;
+							  margin: auto;
+							}
+							@keyframes spin {
+							  0% { transform: rotate(0deg); }
+							  100% { transform: rotate(360deg); }
+							}
+							</style>
+							<div class="spinner"></div>
+							""",
+							unsafe_allow_html=True
+						)
+					with col2:
+						st.write("**Explaining options...**")
+					
+					# Generate option explanations
+					options_list = payload.get("normalized", {}).get("options", []) or []
+					option_explanations = {}
+					if options_list:
+						brand_for_opts = payload.get("normalized", {}).get("brand", "")
+						model_for_opts = payload.get("normalized", {}).get("model", "")
+						client_for_opts = get_openai_client()
+						for opt in options_list:
+							try:
+								if client_for_opts is not None:
+									opt_prompt = (
+										f"Explain briefly what option '{opt}' means for {brand_for_opts} {model_for_opts}. "
+										"Include what it adds or changes, typical functionality, and any compatibility considerations. "
+										"Answer in 3-5 concise sentences in simple terms."
+									)
+									opt_completion = client_for_opts.chat.completions.create(
+										model=MODEL_NAME,
+										temperature=float(TEMPERATURE),
+										messages=[
+											{"role": "system", "content": "You are a helpful expert explaining test equipment options in simple terms."},
+											{"role": "user", "content": opt_prompt},
+										],
+									)
+									option_explanations[opt] = opt_completion.choices[0].message.content or "No explanation available."
+								else:
+									option_explanations[opt] = f"Option '{opt}' adds specific functionality to the {brand_for_opts} {model_for_opts}."
+							except Exception as e:
+								option_explanations[opt] = f"Could not get details for option '{opt}': {e}"
+					
+					# Step 3: Searching market data
+					col1, col2 = st.columns([0.1, 0.9])
+					with col1:
+						st.markdown(
+							"""
+							<style>
+							.spinner {
+							  border: 4px solid #f3f3f3; /* Light gray */
+							  border-top: 4px solid #3498db; /* Blue */
+							  border-radius: 50%;
+							  width: 22px;
+							  height: 22px;
+							  animation: spin 1s linear infinite;
+							  margin: auto;
+							}
+							@keyframes spin {
+							  0% { transform: rotate(0deg); }
+							  100% { transform: rotate(360deg); }
+							}
+							</style>
+							<div class="spinner"></div>
+							""",
+							unsafe_allow_html=True
+						)
+					with col2:
+						st.write("**Searching market data...**")
+					
+					# Web scraping
+					scraping_results = None
 					try:
 						scraping_results = scrape_effective_sites(
 							brand_parsed,
@@ -177,42 +308,78 @@ def main():
 							payload["normalized"]["options"]
 						)
 					except Exception as e:
-						st.error(f"Web scraping error: {e}")
 						scraping_results = None
+					
+					# Update all steps to completed with checkmarks
+					col1, col2 = st.columns([0.1, 0.9])
+					with col1:
+						st.write("✅")
+					with col2:
+						st.write("**Parsing equipment data**")
+					
+					col1, col2 = st.columns([0.1, 0.9])
+					with col1:
+						st.write("✅")
+					with col2:
+						st.write("**Explaining options**")
+					
+					col1, col2 = st.columns([0.1, 0.9])
+					with col1:
+						st.write("✅")
+					with col2:
+						st.write("**Searching market data**")
+					
+					# Store everything in session state
+					st.session_state["analysis_key"] = f"{brand_parsed}|{model_parsed}"
+					st.session_state["analysis_payload"] = payload
+					st.session_state["analysis_scraping"] = scraping_results
+					st.session_state["option_explanations"] = option_explanations
 				
-				# Clear status
-				status_placeholder.empty()
-				
-				# Display results in a nice format
-				st.markdown("---")
-				st.subheader("📋 Analysis Results")
-				
-				# Show parsing results
-				st.markdown("**✅ Parsing Results:**")
-				parsing_json = json.dumps(payload, indent=2)
-				st.code(parsing_json, language="json")
-				
-				# Show scraping results
-				st.markdown("**🌐 Web Scraping Results:**")
-				scraping_json = {
-					"web_scraping_results": []
-				}
-				
-				if scraping_results and "search_results" in scraping_results and scraping_results["search_results"]:
-					for result in scraping_results["search_results"]:
-						scraping_json["web_scraping_results"].append({
-							"brand": result.get('brand', 'N/A'),
-							"model": result.get('model', 'N/A'),
-							"price": result.get('price', 'Price not available'),
-							"vendor": result.get('vendor', 'Vendor not available'),
-							"web_url": result.get('web_url', 'URL not available'),
-							"qty_available": result.get('qty_available', 'Quantity not available'),
-							"source": result.get('source', 'Source not available')
-						})
-				else:
-					scraping_json["web_scraping_results"] = []
-				
-				st.code(json.dumps(scraping_json, indent=2), language="json")
+				# Display complete results (only after everything is ready)
+				if st.session_state.get("analysis_key") == analysis_key_current:
+					payload = st.session_state.get("analysis_payload")
+					scraping_results = st.session_state.get("analysis_scraping")
+					option_explanations = st.session_state.get("option_explanations", {})
+					
+					st.markdown("---")
+					st.subheader("📋 Complete Analysis Results")
+					
+					# Show parsing results
+					st.markdown("**✅ Equipment Analysis:**")
+					st.code(json.dumps(payload, indent=2), language="json")
+					
+					# Options explorer with instant display
+					options_list = payload.get("normalized", {}).get("options", []) or []
+					st.markdown("**🔧 Options Explorer:**")
+					if not options_list:
+						st.info("No options found for this equipment model.")
+					else:
+						st.write("Choose an option to see its description and features!")
+						opt_placeholder = ["— Select an option —"] + options_list
+						selected_option = st.selectbox(
+							"Choose an option to see its description and features!",
+							opt_placeholder,
+							key=f"option_selector_{analysis_key_current}"
+						)
+						if selected_option != "— Select an option —":
+							explanation = option_explanations.get(selected_option, "No explanation available.")
+							st.success(f"**{selected_option}:** {explanation}")
+					
+					# Show scraping results
+					st.markdown("**🌐 Market Information:**")
+					scraping_json = {"web_scraping_results": []}
+					if scraping_results and "search_results" in scraping_results and scraping_results["search_results"]:
+						for result in scraping_results["search_results"]:
+							scraping_json["web_scraping_results"].append({
+								"brand": result.get('brand', 'N/A'),
+								"model": result.get('model', 'N/A'),
+								"price": result.get('price', 'Price not available'),
+								"vendor": result.get('vendor', 'Vendor not available'),
+								"web_url": result.get('web_url', 'URL not available'),
+								"qty_available": result.get('qty_available', 'Quantity not available'),
+								"source": result.get('source', 'Source not available')
+							})
+					st.code(json.dumps(scraping_json, indent=2), language="json")
 		else:
 			st.info("👆 Please select an equipment entry from the dropdown above.")
 	else:
@@ -221,5 +388,3 @@ def main():
 
 if __name__ == "__main__":
 	main()
-
-
