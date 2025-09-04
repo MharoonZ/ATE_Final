@@ -273,7 +273,7 @@ def main():
 								option_explanations[opt] = f"Could not get details for option '{opt}': {e}"
 					
 					# Step 3: Searching market data
-					col1, col2 = st.columns([0.1, 0.9])
+					col1, col2 = st.columns([0.05, 0.95])
 					with col1:
 						st.markdown(
 							"""
@@ -310,24 +310,22 @@ def main():
 					except Exception as e:
 						scraping_results = None
 					
-					# Update all steps to completed with checkmarks
-					col1, col2 = st.columns([0.1, 0.9])
-					with col1:
-						st.write("✅")
-					with col2:
-						st.write("**Parsing equipment data**")
-					
-					col1, col2 = st.columns([0.1, 0.9])
-					with col1:
-						st.write("✅")
-					with col2:
-						st.write("**Explaining options**")
-					
-					col1, col2 = st.columns([0.1, 0.9])
-					with col1:
-						st.write("✅")
-					with col2:
-						st.write("**Searching market data**")
+					steps = [
+						"Parsing equipment data",
+						"Explaining options",
+						"Searching market data"
+					]
+
+					for step in steps:
+						col1, col2 = st.columns([0.05, 0.95])  # smaller gap
+						with col1:
+							st.markdown("✅")
+						with col2:
+							st.markdown(
+								f"<span style='font-size:16px; font-weight:600;'>{step}</span>",
+								unsafe_allow_html=True
+							)
+
 					
 					# Store everything in session state
 					st.session_state["analysis_key"] = f"{brand_parsed}|{model_parsed}"
@@ -356,14 +354,6 @@ def main():
 					else:
 						st.write("Choose an option to see its description and features!")
 						opt_placeholder = ["— Select an option —"] + options_list
-						selected_option = st.selectbox(
-							"Choose an option to see its description and features!",
-							opt_placeholder,
-							key=f"option_selector_{analysis_key_current}"
-						)
-						if selected_option != "— Select an option —":
-							explanation = option_explanations.get(selected_option, "No explanation available.")
-							st.success(f"**{selected_option}:** {explanation}")
 					
 					# Show scraping results
 					st.markdown("**🌐 Market Information:**")
