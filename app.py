@@ -352,8 +352,18 @@ def main():
 					if not options_list:
 						st.info("No options found for this equipment model.")
 					else:
-						st.write("Choose an option to see its description and features!")
-						opt_placeholder = ["— Select an option —"] + options_list
+					st.markdown("**Choose an option to see its description and features!**")
+					opt_placeholder = ["— Select an option —"] + options_list
+					selected_option = st.selectbox(
+					"",
+					opt_placeholder,
+					key=f"option_selector_{analysis_key_current}"
+				)
+				if selected_option != "— Select an option —":
+					explanation = option_explanations.get(selected_option, "No explanation available.")
+					st.success(f"**{selected_option}:** {explanation}")
+
+					
 					
 					# Show scraping results
 					st.markdown("**🌐 Market Information:**")
