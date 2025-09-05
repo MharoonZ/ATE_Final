@@ -272,10 +272,10 @@ def main():
 					# Generate option explanations
 					options_list = payload.get("normalized", {}).get("options", []) or []
 					option_explanations = {}
+					client_for_opts = get_openai_client() # Moved here
 					if options_list:
 						brand_for_opts = payload.get("normalized", {}).get("brand", "")
 						model_for_opts = payload.get("normalized", {}).get("model", "")
-						client_for_opts = get_openai_client()
 						for opt in options_list:
 							try:
 								if client_for_opts is not None:
@@ -425,80 +425,65 @@ def main():
 								"Description": explanation
 							})
 						
-						# Display the table using Streamlit's table for better control over styling
-						import pandas as pd
-						df = pd.DataFrame(table_data)
-						
-						# Reorder columns to "Row", "Option Code", "Category", "Description"
-						df = df[["Row", "Option Code", "Category", "Description"]]
-						
-						# Apply aggressive custom styling to force text wrapping and better layout
-						st.markdown("""
-						<style>
-						/* Force text wrapping in all table cells */
-						.stTable td, .stTable th {
-							white-space: normal !important;
-							word-wrap: break-word !important;
-							word-break: break-word !important;
-							line-height: 1.6em !important;
-							height: auto !important;
-							min-height: 80px !important;
-							vertical-align: top !important;
-							padding: 20px !important;
-							border: 1px solid #e0e0e0 !important;
+						# Create HTML table
+						html_table = """<style>
+						.equipment-table {
+							width: 100%;
+							border-collapse: collapse;
+							margin: 20px 0;
+							box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+							border-radius: 8px;
+							overflow: hidden;
 						}
-						
-						/* Set specific widths for columns */
-						.stTable th:nth-child(1), .stTable td:nth-child(1) { width: 5%; } /* Row */
-						.stTable th:nth-child(2), .stTable td:nth-child(2) { width: 15%; } /* Option Code */
-						.stTable th:nth-child(3), .stTable td:nth-child(3) { width: 20%; } /* Category */
-						.stTable th:nth-child(4), .stTable td:nth-child(4) { width: 60%; } /* Description */
-						
-						/* Table header styling */
-						.stTable th {
-							font-size: 18px !important;
-							font-weight: bold !important;
-							background-color: #f0f2f6 !important;
-							color: #1f2937 !important;
-							text-align: left !important;
-							border-bottom: 2px solid #d1d5db !important;
+						.equipment-table th,
+						.equipment-table td {
+							padding: 12px 15px;
+							border: 1px solid #e0e0e0;
+							text-align: left;
+							vertical-align: top;
+							word-wrap: break-word;
+							word-break: break-word;
 						}
-						
-						/* Table cell styling */
-						.stTable td {
-							font-size: 16px !important;
-							background-color: #ffffff !important;
-							color: #374151 !important;
+						.equipment-table th {
+							background-color: #f0f2f6;
+							color: #1f2937;
+							font-weight: bold;
+							font-size: 16px;
 						}
-						
-						/* Table container styling */
-						.stTable {
-							border-collapse: collapse !important;
-							width: 100% !important;
-							margin: 20px 0 !important;
-							box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
-							border-radius: 8px !important;
-							overflow: hidden !important;
+						.equipment-table td {
+							background-color: #ffffff;
+							color: #374151;
+							font-size: 14px;
 						}
-						
-						/* Hover effect on rows */
-						.stTable tbody tr:hover {
-							background-color: #f9fafb !important;
-						}
-						
-						/* Force table layout */
-						.stTable table {
-							table-layout: fixed !important;
-							width: 100% !important;
+						.equipment-table tr:hover {
+							background-color: #f9fafb;
 						}
 						</style>
-						""", unsafe_allow_html=True)
+						<table class="equipment-table">
+							<thead>
+								<tr>
+									<th style="width: 5%;">Row</th>
+									<th style="width: 15%;">Option Code</th>
+									<th style="width: 20%;">Category</th>
+									<th style="width: auto;">Description</th>
+								</tr>
+							</thead>
+							<tbody>
+							"""
+						for row_data in table_data:
+							html_table += f"""
+								<tr>
+									<td>{row_data['Row']}</td>
+									<td>{row_data['Option Code']}</td>
+									<td>{row_data['Category']}</td>
+									<td>{row_data['Description']}</td>
+								</tr>
+							"""
+						html_table += """
+							</tbody>
+						</table>"""
 						
-						# Use st.table instead of st.dataframe for better styling control
-						# Remove the index to show only the three columns without row numbers
-						df_display = df.copy()
-						df_display.index = [""] * len(df_display)  # Empty index labels
-						st.table(df_display)
+						st.markdown(html_table, unsafe_allow_html=True)
 
 
 					# Show scraping results
