@@ -81,15 +81,38 @@ def main():
 		st.markdown("**Select an equipment entry:**")
 
 		# Create selection interface
-		options_with_placeholder = [-1] + list(range(len(all_data_lines)))
-		selected_index = st.selectbox(
+		# options_with_placeholder = [-1] + list(range(len(all_data_lines)))
+		# selected_index = st.selectbox(
+		# 	"Choose equipment:",
+		# 	options=options_with_placeholder,
+		# 	format_func=lambda i: ("— Select equipment —" if i == -1 else f"📋 {all_data_lines[i].split('\t')[7]} {all_data_lines[i].split('\t')[8]} - {all_data_lines[i].split('\t')[2]}"),
+		# 	index=0
+		# )
+		
+		# Create a list of display names for the radio buttons
+		display_options = [f"📋 {line.split('\t')[7]} {line.split('\t')[8]} - {line.split('\t')[2]}" for line in all_data_lines]
+		
+		# Add a "Select equipment" placeholder at the beginning
+		display_options.insert(0, "— Select equipment —")
+		
+		selected_display_option = st.radio(
 			"Choose equipment:",
-			options=options_with_placeholder,
-			format_func=lambda i: ("— Select equipment —" if i == -1 else f"📋 {all_data_lines[i].split('\t')[7]} {all_data_lines[i].split('\t')[8]} - {all_data_lines[i].split('\t')[2]}"),
-			index=0
+			options=display_options,
+			index=0 # Default to the placeholder
 		)
+		
+		# Add a radio button for market extraction
+		# do_market_extraction = st.radio("Perform Market Data Extraction?", ("Yes", "No"), index=1) == "Yes"
+		do_market_extraction = True # Always perform market extraction now
 
-
+		# Determine the selected_index based on the display option
+		if selected_display_option == "— Select equipment —":
+			selected_index = -1
+		else:
+			# Find the original index of the selected item
+			selected_index = display_options.index(selected_display_option) - 1 # Subtract 1 because of the placeholder
+			
+		
 		if selected_index != -1:
 			selected_line = all_data_lines[selected_index]
 			parts = selected_line.split("\t")
@@ -124,6 +147,9 @@ def main():
 				if check_clicked:
 					st.markdown("---")
 					st.subheader("🔍 Analyzing Your Equipment")
+					
+					# Add a progress line at the very beginning
+					st.info("🚀 I’ve started working. Please wait a bit for results...")
 
 					# Simple 3-line progress with animated icons
 					st.markdown("""
@@ -273,52 +299,58 @@ def main():
 								option_explanations[opt] = f"Could not get details for option '{opt}': {e}"
 
 					# Step 3: Searching market data
-					col1, col2 = st.columns([0.05, 0.95])
-					with col1:
-						st.markdown(
-							"""
-							<style>
-							.spinner {
-							  border: 4px solid #f3f3f3; /* Light gray */
-							  border-top: 4px solid #3498db; /* Blue */
-							  border-radius: 50%;
-							  width: 22px;
-							  height: 22px;
-							  animation: spin 1s linear infinite;
-							  margin: auto;
-							}
-							@keyframes spin {
-							  0% { transform: rotate(0deg); }
-							  100% { transform: rotate(360deg); }
-							}
-							</style>
-							<div class="spinner"></div>
-							""",
-							unsafe_allow_html=True
-						)
-					with col2:
-						st.write("**Searching market data...**")
+					# col1, col2 = st.columns([0.05, 0.95])
+					# with col1:
+					# 	st.markdown(
+					# 		"""
+					# 		<style>
+					# 		.spinner {
+					# 		  border: 4px solid #f3f3f3; /* Light gray */
+					# 		  border-top: 4px solid #3498db; /* Blue */
+					# 		  border-radius: 50%;
+					# 		  width: 22px;
+					# 		  height: 22px;
+					# 		  animation: spin 1s linear infinite;
+					# 		  margin: auto;
+					# 		}
+					# 		@keyframes spin {
+					# 		  0% { transform: rotate(0deg); }
+					# 		  100% { transform: rotate(360deg); }
+					# 		}
+					# 		</style>
+					# 		<div class="spinner"></div>
+					# 		""",
+					# 		unsafe_allow_html=True
+					# )
+					# with col2:
+					# 	st.write("**Searching market data...**")
 
 					# Web scraping
 					scraping_results = None
-					try:
-						scraping_results = scrape_effective_sites(
-							brand_parsed,
-							model_parsed,
-							payload["normalized"]["options"]
-						)
-					except Exception as e:
-						scraping_results = None
+					if do_market_extraction:
+						try:
+							scraping_results = scrape_effective_sites(
+								brand_parsed,
+								model_parsed,
+								payload["normalized"]["options"]
+							)
+						except Exception as e:
+							scraping_results = None
+					else:
+						st.info("Market data extraction skipped.")
 
 					steps = [
 						"Parsing equipment data",
 						"Explaining options",
-						"Searching market data"
+						# "Searching market data"
 					]
 
 					for step in steps:
 						col1, col2 = st.columns([0.05, 0.95])  # smaller gap
 						with col1:
+							# if step == "Searching market data" and not do_market_extraction:
+							# 	st.markdown("➖") # Use a different icon for skipped step
+							# else:
 							st.markdown("✅")
 						with col2:
 							st.markdown(
@@ -330,7 +362,8 @@ def main():
 					# Store everything in session state
 					st.session_state["analysis_key"] = f"{brand_parsed}|{model_parsed}"
 					st.session_state["analysis_payload"] = payload
-					st.session_state["analysis_scraping"] = scraping_results
+					# Only store scraping results if market extraction was performed
+					st.session_state["analysis_scraping"] = scraping_results if do_market_extraction else None
 					st.session_state["option_explanations"] = option_explanations
 
 				# Display complete results (only after everything is ready)
@@ -357,7 +390,7 @@ def main():
 						
 						# Create table data with OpenAI-determined categories
 						table_data = []
-						for opt in options_list:
+						for i, opt in enumerate(options_list):
 							explanation = option_explanations.get(opt, "No description available.")
 							
 							# Use OpenAI to determine the category
@@ -386,14 +419,18 @@ def main():
 								category = "General"  # Fallback to default
 							
 							table_data.append({
+								"Row": i + 1,
 								"Option Code": opt,
-								"Description": explanation,
-								"Category": category
+								"Category": category,
+								"Description": explanation
 							})
 						
 						# Display the table using Streamlit's table for better control over styling
 						import pandas as pd
 						df = pd.DataFrame(table_data)
+						
+						# Reorder columns to "Row", "Option Code", "Category", "Description"
+						df = df[["Row", "Option Code", "Category", "Description"]]
 						
 						# Apply aggressive custom styling to force text wrapping and better layout
 						st.markdown("""
@@ -410,6 +447,12 @@ def main():
 							padding: 20px !important;
 							border: 1px solid #e0e0e0 !important;
 						}
+						
+						/* Set specific widths for columns */
+						.stTable th:nth-child(1), .stTable td:nth-child(1) { width: 5%; } /* Row */
+						.stTable th:nth-child(2), .stTable td:nth-child(2) { width: 15%; } /* Option Code */
+						.stTable th:nth-child(3), .stTable td:nth-child(3) { width: 20%; } /* Category */
+						.stTable th:nth-child(4), .stTable td:nth-child(4) { width: 60%; } /* Description */
 						
 						/* Table header styling */
 						.stTable th {
@@ -453,27 +496,29 @@ def main():
 						
 						# Use st.table instead of st.dataframe for better styling control
 						# Remove the index to show only the three columns without row numbers
-						df_display = df.reset_index(drop=True)
+						df_display = df.copy()
+						df_display.index = [""] * len(df_display)  # Empty index labels
 						st.table(df_display)
 
 
 					# Show scraping results
-					st.markdown("**🌐 Market Information:**")
-					scraping_json = {"web_scraping_results": []}
-					if scraping_results and "search_results" in scraping_results and scraping_results["search_results"]:
-						for result in scraping_results["search_results"]:
-							scraping_json["web_scraping_results"].append({
-								"brand": result.get('brand', 'N/A'),
-								"model": result.get('model', 'N/A'),
-								"price": result.get('price', 'Price not available'),
-								"vendor": result.get('vendor', 'Vendor not available'),
-								"web_url": result.get('web_url', 'URL not available'),
-								"qty_available": result.get('qty_available', 'Quantity not available'),
-								"source": result.get('source', 'Source not available')
+					if do_market_extraction:
+						# st.markdown("**🌐 Market Information:**")
+						scraping_json = {"web_scraping_results": []}
+						if scraping_results and "search_results" in scraping_results and scraping_results["search_results"]:
+							for result in scraping_results["search_results"]:
+								scraping_json["web_scraping_results"].append({
+									"brand": result.get('brand', 'N/A'),
+									"model": result.get('model', 'N/A'),
+									"price": result.get('price', 'Price not available'),
+									"vendor": result.get('vendor', 'Vendor not available'),
+									"web_url": result.get('web_url', 'URL not available'),
+									"qty_available": result.get('qty_available', 'Quantity not available'),
+									"source": result.get('source', 'Source not available')
 							})
-					st.code(json.dumps(scraping_json, indent=2), language="json")
-		else:
-			st.info("👆 Please select an equipment entry from the dropdown above.")
+						# st.code(json.dumps(scraping_json, indent=2), language="json")
+			else:
+				st.info("👆 Please select an equipment entry from the dropdown above.")
 	else:
 		st.error("No dataset available.")
 
