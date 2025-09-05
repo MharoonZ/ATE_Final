@@ -453,8 +453,7 @@ def main():
 						
 						# Use st.table instead of st.dataframe for better styling control
 						# Remove the index to show only the three columns without row numbers
-						df_display = df.copy()
-						df_display.index = [""] * len(df_display)  # Empty index labels
+						df_display = df.reset_index(drop=True)
 						st.table(df_display)
 
 
