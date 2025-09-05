@@ -65,21 +65,21 @@ def main():
 	st.set_page_config(page_title=APP_TITLE, page_icon="🧭", layout="wide")
 	st.title(APP_TITLE)
 	st.caption("Select equipment from the table below and click Analyze to see all the details")
-	
+
 	# Get hardcoded dataset
 	header, all_data_lines = _get_hardcoded_data()
-	
+
 	# Create a nice table display with selection
 	if header and all_data_lines:
 		st.markdown("---")
 		st.subheader("📊 ATE Equipment Database")
-		
+
 		# Parse header for column names
 		header_cols = header.split("\t")
-		
+
 		# Create a DataFrame-like display with selection
 		st.markdown("**Select an equipment entry:**")
-		
+
 		# Create selection interface
 		options_with_placeholder = [-1] + list(range(len(all_data_lines)))
 		selected_index = st.selectbox(
@@ -88,17 +88,17 @@ def main():
 			format_func=lambda i: ("— Select equipment —" if i == -1 else f"📋 {all_data_lines[i].split('\t')[7]} {all_data_lines[i].split('\t')[8]} - {all_data_lines[i].split('\t')[2]}"),
 			index=0
 		)
-		
-		
+
+
 		if selected_index != -1:
 			selected_line = all_data_lines[selected_index]
 			parts = selected_line.split("\t")
-			
-			
+
+
 			st.markdown("---")
 			st.subheader("🎯 Selected Equipment")
-			
-			
+
+
 			col1, col2 = st.columns(2)
 			with col1:
 				st.markdown(f"**Quote ID:** {parts[0]}")
@@ -109,22 +109,22 @@ def main():
 				st.markdown(f"**Created:** {parts[1]}")
 				st.markdown(f"**Record ID:** {parts[4]}")
 				st.markdown(f"**Options:** {parts[9]}")
-			
+
 			st.markdown("---")
 			check_clicked = st.button("🔍 Analyze", type="primary", use_container_width=True)
-			
+
 			# Check if we have cached analysis for this equipment
 			brand_for_session = parts[8].strip()
 			model_for_session = parts[7].strip()
 			analysis_key_current = f"{brand_for_session}|{model_for_session}"
 			cached_analysis = st.session_state.get("analysis_key") == analysis_key_current
-			
+
 			if check_clicked or cached_analysis:
 				# Show comprehensive loading state with non-technical explanations
 				if check_clicked:
 					st.markdown("---")
 					st.subheader("🔍 Analyzing Your Equipment")
-					
+
 					# Simple 3-line progress with animated icons
 					st.markdown("""
 					<style>
@@ -138,7 +138,7 @@ def main():
 					}
 					</style>
 					""", unsafe_allow_html=True)
-					
+
 					col1, col2 = st.columns([0.1, 0.9])
 					with col1:
 						st.markdown(
@@ -164,12 +164,12 @@ def main():
 						)
 					with col2:
 						st.write("**Parsing equipment data...**")
-					
+
 					# Extract brand/model/options from selected line
 					brand, model, options_str = _extract_from_selected_line(header, selected_line)
 					brand_parsed = brand.strip()
 					model_parsed = model.strip()
-					
+
 					# Parse options - only get actual options, not brand/model
 					if options_str:
 						# Use the raw options string directly, split by '/'
@@ -183,7 +183,7 @@ def main():
 						raw_options = '/'.join(filtered_options)
 					else:
 						raw_options = ""
-					
+
 					# AI processing
 					try:
 						client = get_openai_client()
@@ -215,7 +215,7 @@ def main():
 							},
 							"results": []
 						}
-					
+
 					# Step 2: Explaining options
 					col1, col2 = st.columns([0.1, 0.9])
 					with col1:
@@ -242,7 +242,7 @@ def main():
 						)
 					with col2:
 						st.write("**Explaining options...**")
-					
+
 					# Generate option explanations
 					options_list = payload.get("normalized", {}).get("options", []) or []
 					option_explanations = {}
@@ -271,7 +271,7 @@ def main():
 									option_explanations[opt] = f"Option '{opt}' adds specific functionality to the {brand_for_opts} {model_for_opts}."
 							except Exception as e:
 								option_explanations[opt] = f"Could not get details for option '{opt}': {e}"
-					
+
 					# Step 3: Searching market data
 					col1, col2 = st.columns([0.05, 0.95])
 					with col1:
@@ -298,7 +298,7 @@ def main():
 						)
 					with col2:
 						st.write("**Searching market data...**")
-					
+
 					# Web scraping
 					scraping_results = None
 					try:
@@ -309,7 +309,7 @@ def main():
 						)
 					except Exception as e:
 						scraping_results = None
-					
+
 					steps = [
 						"Parsing equipment data",
 						"Explaining options",
@@ -326,45 +326,138 @@ def main():
 								unsafe_allow_html=True
 							)
 
-					
+
 					# Store everything in session state
 					st.session_state["analysis_key"] = f"{brand_parsed}|{model_parsed}"
 					st.session_state["analysis_payload"] = payload
 					st.session_state["analysis_scraping"] = scraping_results
 					st.session_state["option_explanations"] = option_explanations
-				
+
 				# Display complete results (only after everything is ready)
 				if st.session_state.get("analysis_key") == analysis_key_current:
 					payload = st.session_state.get("analysis_payload")
 					scraping_results = st.session_state.get("analysis_scraping")
 					option_explanations = st.session_state.get("option_explanations", {})
-					
+
 					st.markdown("---")
 					st.subheader("📋 Complete Analysis Results")
-					
+
 					# Show parsing results
 					st.markdown("**✅ Equipment Analysis:**")
 					st.code(json.dumps(payload, indent=2), language="json")
-					
-					# Options explorer with instant display
+
+					# Options explorer with tabular display
 					options_list = payload.get("normalized", {}).get("options", []) or []
 					st.markdown("**🔧 Options Explorer:**")
 					if not options_list:
 						st.info("No options found for this equipment model.")
 					else:
-						st.markdown("**Choose an option to see its description and features!**")
-						opt_placeholder = ["— Select an option —"] + options_list
-						selected_option = st.selectbox(
-						"",
-						opt_placeholder,
-						key=f"option_selector_{analysis_key_current}"
-					)
-					if selected_option != "— Select an option —":
-						explanation = option_explanations.get(selected_option, "No explanation available.")
-						st.success(f"**{selected_option}:** {explanation}")
+						# Create a table with option information
+						st.markdown("**All available options for this equipment:**")
+						
+						# Create table data with OpenAI-determined categories
+						table_data = []
+						for opt in options_list:
+							explanation = option_explanations.get(opt, "No description available.")
+							
+							# Use OpenAI to determine the category
+							category = "General"  # Default category
+							try:
+								if client_for_opts is not None:
+									category_prompt = (
+										f"Based on this option description: '{explanation}' for option '{opt}', "
+										f"categorize it into one of these categories: Connectivity, Software, Calibration, Power, Display, Storage, Communication, or General. "
+										f"Respond with only the category name, nothing else."
+									)
+									category_completion = client_for_opts.chat.completions.create(
+										model=MODEL_NAME,
+										temperature=0.1,  # Lower temperature for more consistent categorization
+										messages=[
+											{"role": "system", "content": "You are a helpful expert that categorizes test equipment options. Respond with only the category name."},
+											{"role": "user", "content": category_prompt},
+										],
+									)
+									api_category = category_completion.choices[0].message.content.strip()
+									# Validate the category is one of our predefined ones
+									valid_categories = ["Connectivity", "Software", "Calibration", "Power", "Display", "Storage", "Communication", "General"]
+									if api_category in valid_categories:
+										category = api_category
+							except Exception as e:
+								category = "General"  # Fallback to default
+							
+							table_data.append({
+								"Option Code": opt,
+								"Description": explanation,
+								"Category": category
+							})
+						
+						# Display the table using Streamlit's table for better control over styling
+						import pandas as pd
+						df = pd.DataFrame(table_data)
+						
+						# Apply aggressive custom styling to force text wrapping and better layout
+						st.markdown("""
+						<style>
+						/* Force text wrapping in all table cells */
+						.stTable td, .stTable th {
+							white-space: normal !important;
+							word-wrap: break-word !important;
+							word-break: break-word !important;
+							line-height: 1.6em !important;
+							height: auto !important;
+							min-height: 80px !important;
+							vertical-align: top !important;
+							padding: 20px !important;
+							border: 1px solid #e0e0e0 !important;
+						}
+						
+						/* Table header styling */
+						.stTable th {
+							font-size: 18px !important;
+							font-weight: bold !important;
+							background-color: #f0f2f6 !important;
+							color: #1f2937 !important;
+							text-align: left !important;
+							border-bottom: 2px solid #d1d5db !important;
+						}
+						
+						/* Table cell styling */
+						.stTable td {
+							font-size: 16px !important;
+							background-color: #ffffff !important;
+							color: #374151 !important;
+						}
+						
+						/* Table container styling */
+						.stTable {
+							border-collapse: collapse !important;
+							width: 100% !important;
+							margin: 20px 0 !important;
+							box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+							border-radius: 8px !important;
+							overflow: hidden !important;
+						}
+						
+						/* Hover effect on rows */
+						.stTable tbody tr:hover {
+							background-color: #f9fafb !important;
+						}
+						
+						/* Force table layout */
+						.stTable table {
+							table-layout: fixed !important;
+							width: 100% !important;
+						}
+						</style>
+						""", unsafe_allow_html=True)
+						
+						# Use st.table instead of st.dataframe for better styling control
+						# Remove the index to show only the three columns without row numbers
+						df_display = df.copy()
+						df_display.index = [""] * len(df_display)  # Empty index labels
+						st.table(df_display)
 
-					
-					
+
 					# Show scraping results
 					st.markdown("**🌐 Market Information:**")
 					scraping_json = {"web_scraping_results": []}
