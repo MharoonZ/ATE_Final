@@ -17,7 +17,6 @@ TEMPERATURE = 0.0
 def get_openai_client() -> OpenAI:
 	return OpenAI(api_key=API_KEY)
 
-
 def render_message(role: str, content: str):
 	if role == "user":
 		st.chat_message("user").markdown(content)
@@ -385,9 +384,6 @@ def main():
 					if not options_list:
 						st.info("No options found for this equipment model.")
 					else:
-						# Create a table with option information
-						st.markdown("**All available options for this equipment:**")
-						
 						# Create table data with OpenAI-determined categories
 						table_data = []
 						for i, opt in enumerate(options_list):
@@ -424,67 +420,18 @@ def main():
 								"Category": category,
 								"Description": explanation
 							})
-						
-						# Create HTML table
-						html_table = """<style>
-						.equipment-table {
-							width: 100%;
-							border-collapse: collapse;
-							margin: 20px 0;
-							box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-							border-radius: 8px;
-							overflow: hidden;
-						}
-						.equipment-table th,
-						.equipment-table td {
-							padding: 12px 15px;
-							border: 1px solid #e0e0e0;
-							text-align: left;
-							vertical-align: top;
-							word-wrap: break-word;
-							word-break: break-word;
-						}
-						.equipment-table th {
-							background-color: #f0f2f6;
-							color: #1f2937;
-							font-weight: bold;
-							font-size: 16px;
-						}
-						.equipment-table td {
-							background-color: #ffffff;
-							color: #374151;
-							font-size: 14px;
-						}
-						.equipment-table tr:hover {
-							background-color: #f9fafb;
-						}
-						</style>
-						<table class="equipment-table">
-							<thead>
-								<tr>
-									<th style="width: 5%;">Row</th>
-									<th style="width: 15%;">Option Code</th>
-									<th style="width: 20%;">Category</th>
-									<th style="width: auto;">Description</th>
-								</tr>
-							</thead>
-							<tbody>
-							"""
-						for row_data in table_data:
-							html_table += f"""
-								<tr>
-									<td>{row_data['Row']}</td>
-									<td>{row_data['Option Code']}</td>
-									<td>{row_data['Category']}</td>
-									<td>{row_data['Description']}</td>
-								</tr>
-							"""
-						html_table += """
-							</tbody>
-						</table>"""
-						
-						st.markdown(html_table, unsafe_allow_html=True)
 
+						# Generate Markdown table
+						markdown_table = "**All available options for this equipment:**\n\n"
+						markdown_table += "| Row | Option Code | Category | Description |\n"
+						markdown_table += "|-----|-------------|----------|-------------|\n"
+						
+						for row_data in table_data:
+							# Escape pipe characters in description to prevent breaking table format
+							description = str(row_data['Description']).replace("|", "\|")
+							markdown_table += f"| {row_data['Row']} | {row_data['Option Code']} | {row_data['Category']} | {description} |\n"
+						
+						st.markdown(markdown_table)
 
 					# Show scraping results
 					if do_market_extraction:
